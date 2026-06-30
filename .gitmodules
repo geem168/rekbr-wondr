@@ -1,9 +1,0 @@
-[submodule "api-rekbr-service"]
-	path = api-rekbr-service
-	url = https://github.com/NYAMI-Teams/api-rekbr-service.git
-[submodule "mobile-rekbr-app"]
-	path = mobile-rekbr-app
-	url = https://github.com/NYAMI-Teams/mobile-rekbr-app.git
-[submodule "web-rekbr-app"]
-	path = web-rekbr-app
-	url = https://github.com/NYAMI-Teams/web-rekbr-app.git

@@ -1,0 +1,215 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model BankList {
+  id            String         @id @default(uuid())
+  bank_name     String
+  logo_url      String
+  dummyAccounts DummyAccount[]
+  bankAccounts  BankAccount[]
+}
+
+model User {
+  id         String   @id @default(uuid())
+  email      String   @unique
+  password   String
+  kyc_status String
+  status     String
+  is_admin   Boolean  @default(false)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  push_token String?
+
+  bankAccounts           BankAccount[]
+  transactions_seller    Transaction[] @relation("SellerTransactions")
+  transactions_buyer     Transaction[] @relation("BuyerTransactions")
+  cancelled_transactions Transaction[] @relation("CancelledByUser")
+
+  fund_release_requests FundReleaseRequest[] @relation("FundReleaseSeller")
+  fund_release_admins   FundReleaseRequest[] @relation("FundReleaseAdmin")
+
+  Complaint                   Complaint[]
+  request_confirmation_admins Complaint[] @relation("RequestConfirmationAdmin")
+}
+
+model DummyAccount {
+  id             String   @id @default(uuid())
+  bank           BankList @relation(fields: [bank_id], references: [id])
+  bank_id        String
+  account_number String
+  account_name   String
+}
+
+model BankAccount {
+  id                      String        @id @default(uuid())
+  user                    User          @relation(fields: [user_id], references: [id])
+  user_id                 String
+  bank                    BankList      @relation(fields: [bank_id], references: [id])
+  bank_id                 String
+  account_number          String
+  account_holder_name     String
+  created_at              DateTime      @default(now())
+  updated_at              DateTime      @updatedAt
+  withdrawal_transactions Transaction[] @relation("WithdrawalBankAccount")
+}
+
+model Transaction {
+  id                     String    @id @default(uuid())
+  transaction_code       String    @unique
+  seller                 User      @relation("SellerTransactions", fields: [seller_id], references: [id])
+  seller_id              String
+  buyer                  User      @relation("BuyerTransactions", fields: [buyer_id], references: [id])
+  buyer_id               String
+  item_name              String
+  item_price             Int
+  platform_fee           Int
+  insurance_fee          Int
+  total_amount           Int
+  status                 String
+  virtual_account_number String
+  paid_at                DateTime?
+  payment_deadline       DateTime?
+  shipment_deadline      DateTime?
+  buyer_confirm_deadline DateTime?
+  confirmed_at           DateTime?
+
+  withdrawal_bank_account    BankAccount? @relation("WithdrawalBankAccount", fields: [withdrawal_bank_account_id], references: [id])
+  withdrawal_bank_account_id String?
+  withdrawn_at               DateTime?
+  withdrawn_amount           Int?
+
+  cancelled_at    DateTime?
+  cancelled_by    User?     @relation("CancelledByUser", fields: [cancelled_by_id], references: [id])
+  cancelled_by_id String?
+  cancel_reason   String?
+
+  refunded_at   DateTime?
+  refund_amount Int?
+  refund_reason String?
+
+  shipment              Shipment?
+  fund_release_requests FundReleaseRequest[]
+
+  created_at DateTime    @default(now())
+  updated_at DateTime    @updatedAt
+  Complaint  Complaint[]
+}
+
+model Shipment {
+  id              String      @id @default(uuid())
+  transaction     Transaction @relation(fields: [transaction_id], references: [id])
+  transaction_id  String      @unique
+  courier         CourierList @relation(fields: [courier_id], references: [id])
+  courier_id      String
+  tracking_number String
+  shipment_date   DateTime
+  received_date   DateTime?
+  photo_url       String
+  created_at      DateTime    @default(now())
+  updated_at      DateTime    @updatedAt
+}
+
+model CourierList {
+  id             String           @id @default(uuid())
+  name           String
+  shipments      Shipment[]
+  ReturnShipment ReturnShipment[]
+}
+
+model FundReleaseRequest {
+  id             String      @id @default(uuid())
+  transaction    Transaction @relation(fields: [transaction_id], references: [id])
+  transaction_id String
+  seller         User        @relation("FundReleaseSeller", fields: [seller_id], references: [id])
+  seller_id      String
+  evidence_url   Json
+  reason         String
+  status         String // enum: pending, approved, rejected
+  admin          User?       @relation("FundReleaseAdmin", fields: [admin_id], references: [id])
+  admin_id       String?
+  created_at     DateTime    @default(now())
+  resolved_at    DateTime?
+}
+
+model Complaint {
+  id             String      @id @default(uuid())
+  transaction    Transaction @relation(fields: [transaction_id], references: [id])
+  transaction_id String
+
+  buyer    User   @relation(fields: [buyer_id], references: [id])
+  buyer_id String
+
+  type   String // DAMAGED, LOST, NOT_AS_DESCRIBED
+  status String // WAITING_SELLER_APPROVAL, RETURN_REQUESTED, RETURN_IN_TRANSIT, AWAITING_SELLER_CONFIRMATION, AWAITING_ADMIN_APPROVAL, COMPLETED, UNDER_INVESTIGATION, APPROVED_BY_ADMIN, REJECTED_BY_ADMIN, CANCELED_BY_BUYER
+
+  // Alasan & bukti dari buyer
+  buyer_reason        String?
+  buyer_evidence_urls Json?
+
+  // Tanggapan dari seller
+  seller_response_deadline DateTime?
+  seller_response_reason   String?
+  seller_evidence_urls     Json?
+  seller_decision          String? // "approved" | "rejected"
+  seller_responded_at      DateTime?
+
+  // Permintaan buyer ke admin agar seller konfirmasi barang retur
+  buyer_requested_confirmation_at            DateTime?
+  buyer_requested_confirmation_reason        String?
+  buyer_requested_confirmation_evidence_urls Json?
+
+  // Respons admin atas permintaan konfirmasi tersebut
+  request_confirmation_status    String? // "pending" | "approved" | "rejected"
+  request_confirmation_admin     User?     @relation("RequestConfirmationAdmin", fields: [request_confirmation_admin_id], references: [id])
+  request_confirmation_admin_id  String?
+  admin_approved_confirmation_at DateTime?
+  admin_rejected_confirmation_at DateTime?
+  seller_confirm_deadline        DateTime?
+  seller_confirmed_return_at     DateTime?
+
+  // Deadline input shipment
+  buyer_deadline_input_shipment DateTime?
+  canceled_by_buyer_at          DateTime?
+
+  // Waktu admin merespons komplain
+  admin_decision     String? // "approved" | "rejected"
+  admin_responded_at DateTime?
+
+  // Resolusi akhir komplain
+  resolved_at DateTime?
+
+  return_shipment ReturnShipment?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model ReturnShipment {
+  id           String    @id @default(uuid())
+  complaint    Complaint @relation(fields: [complaint_id], references: [id])
+  complaint_id String    @unique
+
+  courier    CourierList @relation(fields: [courier_id], references: [id])
+  courier_id String
+
+  tracking_number String
+  shipment_date   DateTime
+  received_date   DateTime?
+  photo_url       String?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
